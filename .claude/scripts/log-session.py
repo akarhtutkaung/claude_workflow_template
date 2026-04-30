@@ -6,61 +6,72 @@ Receives JSON on stdin with session_id and transcript_path.
 
 import json
 import sys
+import time
 from datetime import datetime, timezone
 from pathlib import Path
 
-def extract_summary(transcript_path: str) -> dict:
-    """Parse the JSONL transcript and pull out key info."""
+def _parse_transcript(transcript_path: str) -> dict:
     user_messages = []
     tool_calls = []
     assistant_snippets = []
 
-    try:
-        with open(transcript_path, "r", encoding="utf-8") as f:
-            for line in f:
-                line = line.strip()
-                if not line:
-                    continue
-                try:
-                    entry = json.loads(line)
-                except json.JSONDecodeError:
-                    continue
+    with open(transcript_path, "r", encoding="utf-8") as f:
+        for line in f:
+            line = line.strip()
+            if not line:
+                continue
+            try:
+                entry = json.loads(line)
+            except json.JSONDecodeError:
+                continue
 
-                msg = entry.get("message", {})
-                role = msg.get("role", "")
-                content = msg.get("content", "")
+            msg = entry.get("message", {})
+            role = msg.get("role", "")
+            content = msg.get("content", "")
 
-                if role == "user":
-                    if isinstance(content, str) and content.strip():
-                        user_messages.append(content.strip()[:300])
-                    elif isinstance(content, list):
-                        for block in content:
-                            if isinstance(block, dict) and block.get("type") == "text":
+            if role == "user":
+                if isinstance(content, str) and content.strip():
+                    user_messages.append(content.strip()[:300])
+                elif isinstance(content, list):
+                    for block in content:
+                        if isinstance(block, dict) and block.get("type") == "text":
+                            text = block.get("text", "").strip()
+                            if text:
+                                user_messages.append(text[:300])
+
+            elif role == "assistant":
+                if isinstance(content, list):
+                    for block in content:
+                        if isinstance(block, dict):
+                            if block.get("type") == "tool_use":
+                                tool_calls.append(block.get("name", "unknown"))
+                            elif block.get("type") == "text":
                                 text = block.get("text", "").strip()
                                 if text:
-                                    user_messages.append(text[:300])
-
-                elif role == "assistant":
-                    if isinstance(content, list):
-                        for block in content:
-                            if isinstance(block, dict):
-                                if block.get("type") == "tool_use":
-                                    tool_calls.append(block.get("name", "unknown"))
-                                elif block.get("type") == "text":
-                                    text = block.get("text", "").strip()
-                                    if text:
-                                        assistant_snippets.append(text[:300])
-                    elif isinstance(content, str) and content.strip():
-                        assistant_snippets.append(content.strip()[:300])
-
-    except (OSError, IOError):
-        pass
+                                    assistant_snippets.append(text[:300])
+                elif isinstance(content, str) and content.strip():
+                    assistant_snippets.append(content.strip()[:300])
 
     return {
         "user_messages": user_messages,
         "tool_calls": tool_calls,
         "assistant_snippets": assistant_snippets,
     }
+
+
+def extract_summary(transcript_path: str) -> dict:
+    """Parse the JSONL transcript, retrying briefly if the file hasn't been flushed yet."""
+    empty = {"user_messages": [], "tool_calls": [], "assistant_snippets": []}
+    for _ in range(5):
+        try:
+            result = _parse_transcript(transcript_path)
+            if result["user_messages"] or result["assistant_snippets"]:
+                return result
+            # File exists but has no message content yet — wait and retry
+            time.sleep(1)
+        except (OSError, IOError):
+            time.sleep(1)
+    return empty
 
 
 def main():
