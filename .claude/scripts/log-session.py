@@ -1,7 +1,9 @@
 #!/usr/bin/env python3
 """
-Stop hook: writes a session log to .claude/log/<date>-<session_id>.md
+Stop hook: writes a session log to .claude/log/<date>-<HHMMSS>.md
 Receives JSON on stdin with session_id and transcript_path.
+A .session-index.json index maps session IDs to filenames so repeated
+Stop hook calls within the same session overwrite the same file.
 """
 
 import json
@@ -90,14 +92,28 @@ def main():
     now = datetime.now(timezone.utc)
     date_str = now.strftime("%Y-%m-%d")
     time_str = now.strftime("%H:%M:%S UTC")
-    short_id = session_id[:8] if len(session_id) >= 8 else session_id
+    time_file = now.strftime("%H%M%S")
 
     # Resolve log directory relative to this script's location
     script_dir = Path(__file__).parent
     log_dir = script_dir.parent / "log"
     log_dir.mkdir(exist_ok=True)
 
-    log_file = log_dir / f"{date_str}-{short_id}.md"
+    # Use a session index so repeated Stop hook calls (one per response) always
+    # update the same file rather than creating a new one each time.
+    index_path = log_dir / ".session-index.json"
+    try:
+        index = json.loads(index_path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        index = {}
+
+    if session_id in index:
+        log_file = log_dir / index[session_id]
+    else:
+        filename = f"{date_str}-{time_file}.md"
+        index[session_id] = filename
+        index_path.write_text(json.dumps(index, indent=2), encoding="utf-8")
+        log_file = log_dir / filename
 
     summary = extract_summary(transcript_path) if transcript_path else {}
 
