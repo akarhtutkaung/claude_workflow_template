@@ -26,8 +26,9 @@ def extract_summary(transcript_path: str) -> dict:
                 except json.JSONDecodeError:
                     continue
 
-                role = entry.get("role", "")
-                content = entry.get("content", "")
+                msg = entry.get("message", {})
+                role = msg.get("role", "")
+                content = msg.get("content", "")
 
                 if role == "user":
                     if isinstance(content, str) and content.strip():

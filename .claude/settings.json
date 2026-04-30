@@ -6,11 +6,11 @@
         "hooks": [
           {
             "type": "command",
-            "command": "python3 /Users/akarkaung/Desktop/code/Lott/.claude/scripts/log-session.py"
+            "command": "python3 \"$CLAUDE_PROJECT_DIR/.claude/scripts/log-session.py\""
           },
           {
             "type": "command",
-            "command": "bash /Users/akarkaung/Desktop/code/Lott/.claude/scripts/reflect-nudge.sh"
+            "command": "bash \"$CLAUDE_PROJECT_DIR/.claude/scripts/reflect-nudge.sh\""
           }
         ]
       }
